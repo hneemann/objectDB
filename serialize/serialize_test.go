@@ -2,7 +2,6 @@ package serialize
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -22,11 +21,11 @@ func TestStructWrite(t *testing.T) {
 	var w bytes.Buffer
 
 	var a = struct {
-		a int32
-		b bool
+		A int32
+		B bool
 	}{
-		a: 1025,
-		b: true,
+		A: 1025,
+		B: true,
 	}
 
 	err := Write(&w, &a)
@@ -39,11 +38,11 @@ func TestStructNilWrite(t *testing.T) {
 	var w bytes.Buffer
 
 	var a = struct {
-		a int32
-		b *bool
+		A int32
+		B *bool
 	}{
-		a: 1025,
-		b: nil,
+		A: 1025,
+		B: nil,
 	}
 
 	err := Write(&w, &a)
@@ -124,8 +123,6 @@ func TestRWStruct(t *testing.T) {
 	err := Write(&b, &in)
 	assert.NoError(t, err)
 
-	fmt.Printf("len: %d\n", b.Len())
-
 	var out st
 	err = Read(&b, &out)
 	assert.NoError(t, err)
@@ -133,7 +130,7 @@ func TestRWStruct(t *testing.T) {
 	assert.EqualValues(t, in, out)
 }
 
-func TestRWArray(t *testing.T) {
+func TestRWSlice(t *testing.T) {
 	var b bytes.Buffer
 
 	type st struct {
@@ -148,9 +145,29 @@ func TestRWArray(t *testing.T) {
 	err := Write(&b, &in)
 	assert.NoError(t, err)
 
-	fmt.Printf("len: %d\n", b.Len())
-
 	var out []st
+	err = Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
+
+func TestRWArray(t *testing.T) {
+	var b bytes.Buffer
+
+	type st struct {
+		A int
+	}
+
+	var in [10]st
+	for i := 0; i < 10; i++ {
+		in[i] = st{A: i * 10}
+	}
+
+	err := Write(&b, &in)
+	assert.NoError(t, err)
+
+	var out [10]st
 	err = Read(&b, &out)
 	assert.NoError(t, err)
 

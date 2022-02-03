@@ -256,6 +256,8 @@ func readValue(r io.Reader, v reflect.Value) error {
 		return readValue(r, v.Elem())
 	case reflect.Slice:
 		return readSlice(r, v)
+	case reflect.Array:
+		return readArray(r, v)
 	}
 
 	return fmt.Errorf("unsuported type %v", v.Type())
@@ -279,6 +281,26 @@ func readSlice(r io.Reader, v reflect.Value) error {
 		}
 	}
 	v.Set(slice)
+
+	return nil
+}
+
+func readArray(r io.Reader, v reflect.Value) error {
+	err := expect(r, arrayCode)
+	if err != nil {
+		return err
+	}
+	l, err := readInt32(r)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < l; i++ {
+		err = readValue(r, v.Index(i))
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
