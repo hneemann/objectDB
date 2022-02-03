@@ -114,14 +114,13 @@ func (p persistJson[E]) Restore() ([]*E, error) {
 
 				b, err := ioutil.ReadAll(f)
 				if err != nil {
-					log.Println("could not open json file")
-					return nil, err
+					return nil, fmt.Errorf("could not open json file: %w", err)
 				}
 				var items []*E
 				err = json.Unmarshal(b, &items)
 				if err != nil {
 					log.Println("could not unmarshal json file")
-					return nil, err
+					return nil, fmt.Errorf("could not unmarshal json file: %w", err)
 				}
 
 				allItems = append(allItems, items...)
