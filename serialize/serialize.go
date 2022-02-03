@@ -149,9 +149,12 @@ func writeStruct(w io.Writer, v reflect.Value, ptrDepth int) error {
 		return err
 	}
 	for i := 0; i < v.NumField(); i++ {
-		err = writeValue(w, v.Field(i), ptrDepth)
-		if err != nil {
-			return err
+		field := v.Field(i)
+		if field.CanSet() {
+			err = writeValue(w, field, ptrDepth)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -202,4 +205,184 @@ func writeTypeCode(w io.Writer, c typeCode) error {
 func writeBytes(w io.Writer, b ...byte) error {
 	_, err := w.Write(b)
 	return err
+}
+
+func Read(r io.Reader, data any) (err error) {
+	rv := reflect.ValueOf(data)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return fmt.Errorf("invalid target type: %v", reflect.TypeOf(data))
+	}
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("error during decoding: %v", rec)
+		}
+	}()
+
+	return readValue(r, rv)
+}
+
+func readValue(r io.Reader, v reflect.Value) error {
+	switch v.Kind() {
+	case reflect.Struct:
+		return readStruct(r, v)
+	case reflect.Bool:
+		return readBool(r, v)
+	case reflect.Int, reflect.Uint:
+		return readInt(r, v)
+	case reflect.Uint8:
+		return readSizedInt(r, v, uint8Code)
+	case reflect.Uint16:
+		return readSizedInt(r, v, uint16Code)
+	case reflect.Uint32:
+		return readSizedInt(r, v, uint32Code)
+	case reflect.Uint64:
+		return readSizedInt(r, v, uint64Code)
+	case reflect.Int8:
+		return readSizedInt(r, v, int8Code)
+	case reflect.Int16:
+		return readSizedInt(r, v, int16Code)
+	case reflect.Int32:
+		return readSizedInt(r, v, int32Code)
+	case reflect.Int64:
+		return readSizedInt(r, v, int64Code)
+	case reflect.String:
+		return readString(r, v)
+	case reflect.Pointer:
+		if v.IsNil() {
+			nv := reflect.New(v.Type().Elem())
+			v.Set(nv)
+		}
+		return readValue(r, v.Elem())
+	}
+
+	return fmt.Errorf("unsuported type %v", v.Type())
+}
+
+func readBool(r io.Reader, v reflect.Value) error {
+	err := expect(r, boolCode)
+	if err != nil {
+		return err
+	}
+	buf := make([]byte, 1)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return err
+	}
+	v.SetBool(buf[0] != 0)
+	return nil
+}
+
+func readSizedInt(r io.Reader, v reflect.Value, code typeCode) error {
+	err := expect(r, code)
+	if err != nil {
+		return err
+	}
+	l := getIntLen(code)
+
+	return readRawInt(r, v, l)
+}
+
+func readInt(r io.Reader, v reflect.Value) error {
+	buf := make([]byte, 1)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return err
+	}
+
+	switch typeCode(buf[0]) {
+	case int32Code:
+		return readRawInt(r, v, 4)
+	case int64Code:
+		return readRawInt(r, v, 8)
+	default:
+		return fmt.Errorf("invalid int data")
+	}
+}
+
+func readRawInt(r io.Reader, v reflect.Value, l int) error {
+	buf := make([]byte, l)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return err
+	}
+
+	var val int64
+	for i := 0; i < l; i++ {
+		val = val << 8
+		val |= int64(buf[l-i-1] & 0xff)
+	}
+	v.SetInt(val)
+	return nil
+}
+
+func getIntLen(code typeCode) int {
+	switch code {
+	case int8Code, uint8Code:
+		return 1
+	case int16Code, uint16Code:
+		return 2
+	case int32Code, uint32Code:
+		return 4
+	case int64Code, uint64Code:
+		return 8
+	default:
+		return 0
+	}
+}
+
+func readStruct(r io.Reader, v reflect.Value) error {
+	err := expect(r, structCode)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		if field.CanSet() {
+			err = readValue(r, field)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func readString(r io.Reader, v reflect.Value) error {
+	err := expect(r, stringCode)
+	if err != nil {
+		return err
+	}
+	strLen, err := readInt32(r)
+	if err != nil {
+		return fmt.Errorf("could not read string len: %w", err)
+	}
+	buf := make([]byte, strLen)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return fmt.Errorf("could not read string data: %w", err)
+	}
+	v.SetString(string(buf))
+	return nil
+}
+
+func readInt32(r io.Reader) (int, error) {
+	buf := make([]byte, 4)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return 0, fmt.Errorf("could not read int32: %w", err)
+	}
+	return int(buf[0]) | (int(buf[1]) << 8) | (int(buf[2]) << 16) | (int(buf[3]) << 24), nil
+}
+
+func expect(r io.Reader, code typeCode) error {
+	buf := []byte{0}
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return fmt.Errorf("could not read type code: %w", err)
+	}
+	if buf[0] != byte(code) {
+		return fmt.Errorf("unexpected type code: expected %v, found %v", code, buf[0])
+	}
+	return nil
 }

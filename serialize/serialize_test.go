@@ -2,6 +2,7 @@ package serialize
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -97,4 +98,61 @@ func TestMapInt(t *testing.T) {
 	e2 := bytes.Equal([]byte{0xf, 0x2, 0x0, 0x0, 0x0, 0x3, 0x1, 0x0, 0x3, 0x10, 0x0, 0x3, 0x2, 0x0, 0x3, 0x20, 0x0}, found)
 
 	assert.True(t, e1 || e2)
+}
+
+func TestRWStruct(t *testing.T) {
+	var b bytes.Buffer
+
+	type st struct {
+		A int64
+		B int32
+		C int16
+		D int8
+		E string
+		F int
+	}
+
+	in := st{
+		A: 1025,
+		B: 1026,
+		C: 1027,
+		D: 88,
+		E: "Hello World",
+		F: 32768,
+	}
+
+	err := Write(&b, &in)
+	assert.NoError(t, err)
+
+	fmt.Printf("len: %d\n", b.Len())
+
+	var out st
+	err = Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
+
+func TestRWArray(t *testing.T) {
+	var b bytes.Buffer
+
+	type st struct {
+		A int
+	}
+
+	var in []st
+	for i := 0; i < 10; i++ {
+		in = append(in, st{A: i * 10})
+	}
+
+	err := Write(&b, &in)
+	assert.NoError(t, err)
+
+	fmt.Printf("len: %d\n", b.Len())
+
+	var out []st
+	err = Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
 }
