@@ -258,9 +258,45 @@ func readValue(r io.Reader, v reflect.Value) error {
 		return readSlice(r, v)
 	case reflect.Array:
 		return readArray(r, v)
+	case reflect.Map:
+		return readMap(r, v)
 	}
 
 	return fmt.Errorf("unsuported type %v", v.Type())
+}
+
+func readMap(r io.Reader, v reflect.Value) error {
+	err := expect(r, mapCode)
+	if err != nil {
+		return err
+	}
+	l, err := readInt32(r)
+	if err != nil {
+		return err
+	}
+
+	keyType := v.Type().Key()
+	valType := v.Type().Elem()
+
+	newMap := reflect.MakeMap(v.Type())
+	for i := 0; i < l; i++ {
+		key := reflect.New(keyType)
+		err = readValue(r, key)
+		if err != nil {
+			return err
+		}
+
+		val := reflect.New(valType)
+		err = readValue(r, val)
+		if err != nil {
+			return err
+		}
+
+		newMap.SetMapIndex(key.Elem(), val.Elem())
+	}
+	v.Set(newMap)
+
+	return nil
 }
 
 func readSlice(r io.Reader, v reflect.Value) error {

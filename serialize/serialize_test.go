@@ -173,3 +173,21 @@ func TestRWArray(t *testing.T) {
 
 	assert.EqualValues(t, in, out)
 }
+
+func TestRWMap(t *testing.T) {
+	var b bytes.Buffer
+
+	var in = map[string]string{
+		"a": "A",
+		"b": "B",
+	}
+
+	err := Write(&b, &in)
+	assert.NoError(t, err)
+
+	var out map[string]string
+	err = Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
