@@ -301,6 +301,8 @@ func (s *serializer) readValue(r io.Reader, v reflect.Value) error {
 		return s.readSizedInt(r, v, int64Code)
 	case reflect.Float64:
 		return s.readFloat64(r, v)
+	case reflect.Float32:
+		return s.readFloat32(r, v)
 	case reflect.String:
 		return s.readString(r, v)
 	case reflect.Pointer:
@@ -533,6 +535,21 @@ func (s *serializer) readString(r io.Reader, v reflect.Value) error {
 		return fmt.Errorf("could not read string data: %w", err)
 	}
 	v.SetString(string(buf))
+	return nil
+}
+
+func (s *serializer) readFloat32(r io.Reader, v reflect.Value) error {
+	err := expect(r, float32Code)
+	if err != nil {
+		return err
+	}
+	floatBits, err := s.readInt32(r)
+	if err != nil {
+		return fmt.Errorf("could not read string len: %w", err)
+	}
+
+	v.SetFloat(float64(math.Float32frombits(uint32(floatBits))))
+
 	return nil
 }
 
