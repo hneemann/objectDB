@@ -11,7 +11,7 @@ func TestStringWrite(t *testing.T) {
 
 	var a = "Hello"
 
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, []byte{0xc, 0x5, 0x0, 0x0, 0x0, 0x48, 0x65, 0x6c, 0x6c, 0x6f}, w.Bytes())
@@ -28,7 +28,7 @@ func TestStructWrite(t *testing.T) {
 		B: true,
 	}
 
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, []byte{0xd, 0x4, 0x1, 0x4, 0x0, 0x0, 0x1, 0x1}, w.Bytes())
@@ -45,7 +45,7 @@ func TestStructNilWrite(t *testing.T) {
 		B: nil,
 	}
 
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, []byte{0xd, 0x4, 0x1, 0x4, 0x0, 0x0, 0x0}, w.Bytes())
@@ -54,7 +54,7 @@ func TestStructNilWrite(t *testing.T) {
 func TestSlice(t *testing.T) {
 	var w bytes.Buffer
 	var a = []int16{1, 2, 3, 4}
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 	assert.EqualValues(t, []byte{0xe, 0x4, 0x0, 0x0, 0x0, 0x3, 0x1, 0x0, 0x3, 0x2, 0x0, 0x3, 0x3, 0x0, 0x3, 0x4, 0x0}, w.Bytes())
 }
@@ -62,7 +62,7 @@ func TestSlice(t *testing.T) {
 func TestArray(t *testing.T) {
 	var w bytes.Buffer
 	var a = [4]int16{1, 2, 3, 4}
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 	assert.EqualValues(t, []byte{0xe, 0x4, 0x0, 0x0, 0x0, 0x3, 0x1, 0x0, 0x3, 0x2, 0x0, 0x3, 0x3, 0x0, 0x3, 0x4, 0x0}, w.Bytes())
 }
@@ -73,7 +73,7 @@ func TestMap(t *testing.T) {
 		"a": "A",
 		"b": "B",
 	}
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 
 	found := w.Bytes()
@@ -89,7 +89,7 @@ func TestMapInt(t *testing.T) {
 		1: 16,
 		2: 32,
 	}
-	err := Write(&w, &a)
+	err := New().Write(&w, &a)
 	assert.NoError(t, err)
 
 	found := w.Bytes()
@@ -120,11 +120,12 @@ func TestRWStruct(t *testing.T) {
 		F: 32768,
 	}
 
-	err := Write(&b, &in)
+	ser := New()
+	err := ser.Write(&b, &in)
 	assert.NoError(t, err)
 
 	var out st
-	err = Read(&b, &out)
+	err = ser.Read(&b, &out)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, in, out)
@@ -142,11 +143,12 @@ func TestRWSlice(t *testing.T) {
 		in = append(in, st{A: i * 10})
 	}
 
-	err := Write(&b, &in)
+	ser := New()
+	err := ser.Write(&b, &in)
 	assert.NoError(t, err)
 
 	var out []st
-	err = Read(&b, &out)
+	err = ser.Read(&b, &out)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, in, out)
@@ -164,11 +166,12 @@ func TestRWArray(t *testing.T) {
 		in[i] = st{A: i * 10}
 	}
 
-	err := Write(&b, &in)
+	ser := New()
+	err := ser.Write(&b, &in)
 	assert.NoError(t, err)
 
 	var out [10]st
-	err = Read(&b, &out)
+	err = ser.Read(&b, &out)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, in, out)
@@ -182,11 +185,12 @@ func TestRWMap(t *testing.T) {
 		"b": "B",
 	}
 
-	err := Write(&b, &in)
+	ser := New()
+	err := ser.Write(&b, &in)
 	assert.NoError(t, err)
 
 	var out map[string]string
-	err = Read(&b, &out)
+	err = ser.Read(&b, &out)
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, in, out)
