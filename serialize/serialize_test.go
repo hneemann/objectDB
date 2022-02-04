@@ -154,6 +154,29 @@ func TestRWSlice(t *testing.T) {
 	assert.EqualValues(t, in, out)
 }
 
+func TestRWSlicePointer(t *testing.T) {
+	var b bytes.Buffer
+
+	type st struct {
+		A int
+	}
+
+	var in []*st
+	for i := 0; i < 10; i++ {
+		in = append(in, &st{A: i * 10})
+	}
+
+	ser := New()
+	err := ser.Write(&b, &in)
+	assert.NoError(t, err)
+
+	var out []*st
+	err = ser.Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
+
 func TestRWArray(t *testing.T) {
 	var b bytes.Buffer
 

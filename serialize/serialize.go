@@ -1,3 +1,6 @@
+// Package serialize is a simple package to serialize data.
+// It is able to serialize and deserialize interfaces.
+// A custom binary format is generated that is compatible to nothing.
 package serialize
 
 import (
@@ -32,27 +35,30 @@ const (
 
 const pointerMask = 1 << 31
 
-type serializer struct {
+type Serializer struct {
 	typeList []reflect.Type
 	typeMap  map[string]uint32
 }
 
-func New() *serializer {
-	return &serializer{typeMap: map[string]uint32{}}
+// New creates a new serializer
+func New() *Serializer {
+	return &Serializer{typeMap: map[string]uint32{}}
 }
 
-func (s *serializer) Register(i any) *serializer {
+// Register registers a interface for serialization
+func (s *Serializer) Register(i any) *Serializer {
 	t := reflect.TypeOf(i)
 	s.typeMap[t.String()] = uint32(len(s.typeList))
 	s.typeList = append(s.typeList, t)
 	return s
 }
 
-func (s *serializer) Write(w io.Writer, data any) error {
+// Write writes the data to the writer
+func (s *Serializer) Write(w io.Writer, data any) error {
 	return s.writeValue(w, reflect.ValueOf(data), 0)
 }
 
-func (s *serializer) writeValue(w io.Writer, v reflect.Value, ptrDepth int) error {
+func (s *Serializer) writeValue(w io.Writer, v reflect.Value, ptrDepth int) error {
 	switch v.Kind() {
 	case reflect.Bool:
 		return s.writeBool(w, v)
@@ -107,7 +113,7 @@ func (s *serializer) writeValue(w io.Writer, v reflect.Value, ptrDepth int) erro
 	return fmt.Errorf("unsuported type %v", v)
 }
 
-func (s *serializer) writeInterface(w io.Writer, v reflect.Value, depth int) error {
+func (s *Serializer) writeInterface(w io.Writer, v reflect.Value, depth int) error {
 	err := s.writeTypeCode(w, interfaceCode)
 	if err != nil {
 		return err
@@ -139,7 +145,7 @@ func (s *serializer) writeInterface(w io.Writer, v reflect.Value, depth int) err
 	return s.writeValue(w, val, depth)
 }
 
-func (s *serializer) writeMap(w io.Writer, v reflect.Value, ptrDepth int) error {
+func (s *Serializer) writeMap(w io.Writer, v reflect.Value, ptrDepth int) error {
 	err := s.writeTypeCode(w, mapCode)
 	if err != nil {
 		return err
@@ -165,7 +171,7 @@ func (s *serializer) writeMap(w io.Writer, v reflect.Value, ptrDepth int) error 
 	return nil
 }
 
-func (s *serializer) writeArray(w io.Writer, v reflect.Value, prtDepth int) error {
+func (s *Serializer) writeArray(w io.Writer, v reflect.Value, prtDepth int) error {
 	err := s.writeTypeCode(w, arrayCode)
 	if err != nil {
 		return err
@@ -184,7 +190,7 @@ func (s *serializer) writeArray(w io.Writer, v reflect.Value, prtDepth int) erro
 	return nil
 }
 
-func (s *serializer) writeBool(w io.Writer, v reflect.Value) error {
+func (s *Serializer) writeBool(w io.Writer, v reflect.Value) error {
 	err := s.writeTypeCode(w, boolCode)
 	if err != nil {
 		return err
@@ -196,7 +202,7 @@ func (s *serializer) writeBool(w io.Writer, v reflect.Value) error {
 	}
 }
 
-func (s *serializer) writeStruct(w io.Writer, v reflect.Value, ptrDepth int) error {
+func (s *Serializer) writeStruct(w io.Writer, v reflect.Value, ptrDepth int) error {
 	err := s.writeTypeCode(w, structCode)
 	if err != nil {
 		return err
@@ -213,7 +219,7 @@ func (s *serializer) writeStruct(w io.Writer, v reflect.Value, ptrDepth int) err
 	return nil
 }
 
-func (s *serializer) writeString(w io.Writer, str string) error {
+func (s *Serializer) writeString(w io.Writer, str string) error {
 	err := s.writeTypeCode(w, stringCode)
 	if err != nil {
 		return err
@@ -226,7 +232,7 @@ func (s *serializer) writeString(w io.Writer, str string) error {
 	return err
 }
 
-func (s *serializer) writeIntBytes(w io.Writer, code typeCode, v int64, n int) error {
+func (s *Serializer) writeIntBytes(w io.Writer, code typeCode, v int64, n int) error {
 	err := s.writeTypeCode(w, code)
 	if err != nil {
 		return err
@@ -241,7 +247,7 @@ func (s *serializer) writeIntBytes(w io.Writer, code typeCode, v int64, n int) e
 	return err
 }
 
-func (s *serializer) writeInt32(w io.Writer, i uint32) error {
+func (s *Serializer) writeInt32(w io.Writer, i uint32) error {
 	return s.writeBytes(w,
 		byte(i&0xff),
 		byte((i>>8)&0xff),
@@ -250,17 +256,18 @@ func (s *serializer) writeInt32(w io.Writer, i uint32) error {
 	)
 }
 
-func (s *serializer) writeTypeCode(w io.Writer, c typeCode) error {
+func (s *Serializer) writeTypeCode(w io.Writer, c typeCode) error {
 	_, err := w.Write([]byte{byte(c)})
 	return err
 }
 
-func (s *serializer) writeBytes(w io.Writer, b ...byte) error {
+func (s *Serializer) writeBytes(w io.Writer, b ...byte) error {
 	_, err := w.Write(b)
 	return err
 }
 
-func (s *serializer) Read(r io.Reader, data any) (err error) {
+// Read reads the data from the reader
+func (s *Serializer) Read(r io.Reader, data any) (err error) {
 	rv := reflect.ValueOf(data)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return fmt.Errorf("invalid target type: %v", reflect.TypeOf(data))
@@ -275,7 +282,7 @@ func (s *serializer) Read(r io.Reader, data any) (err error) {
 	return s.readValue(r, rv)
 }
 
-func (s *serializer) readValue(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readValue(r io.Reader, v reflect.Value) error {
 	switch v.Kind() {
 	case reflect.Struct:
 		return s.readStruct(r, v)
@@ -324,7 +331,7 @@ func (s *serializer) readValue(r io.Reader, v reflect.Value) error {
 	return fmt.Errorf("unsuported type %v", v.Type())
 }
 
-func (s *serializer) readInterface(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readInterface(r io.Reader, v reflect.Value) error {
 	err := expect(r, interfaceCode)
 	if err != nil {
 		return err
@@ -355,7 +362,7 @@ func (s *serializer) readInterface(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readMap(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readMap(r io.Reader, v reflect.Value) error {
 	err := expect(r, mapCode)
 	if err != nil {
 		return err
@@ -389,7 +396,7 @@ func (s *serializer) readMap(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readSlice(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readSlice(r io.Reader, v reflect.Value) error {
 	err := expect(r, arrayCode)
 	if err != nil {
 		return err
@@ -411,7 +418,7 @@ func (s *serializer) readSlice(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readArray(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readArray(r io.Reader, v reflect.Value) error {
 	err := expect(r, arrayCode)
 	if err != nil {
 		return err
@@ -431,7 +438,7 @@ func (s *serializer) readArray(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readBool(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readBool(r io.Reader, v reflect.Value) error {
 	err := expect(r, boolCode)
 	if err != nil {
 		return err
@@ -445,7 +452,7 @@ func (s *serializer) readBool(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readSizedInt(r io.Reader, v reflect.Value, code typeCode) error {
+func (s *Serializer) readSizedInt(r io.Reader, v reflect.Value, code typeCode) error {
 	err := expect(r, code)
 	if err != nil {
 		return err
@@ -455,7 +462,7 @@ func (s *serializer) readSizedInt(r io.Reader, v reflect.Value, code typeCode) e
 	return s.readRawInt(r, v, l)
 }
 
-func (s *serializer) readInt(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readInt(r io.Reader, v reflect.Value) error {
 	buf := make([]byte, 1)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
@@ -472,7 +479,7 @@ func (s *serializer) readInt(r io.Reader, v reflect.Value) error {
 	}
 }
 
-func (s *serializer) readRawInt(r io.Reader, v reflect.Value, l int) error {
+func (s *Serializer) readRawInt(r io.Reader, v reflect.Value, l int) error {
 	buf := make([]byte, l)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
@@ -503,7 +510,7 @@ func getIntLen(code typeCode) int {
 	}
 }
 
-func (s *serializer) readStruct(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readStruct(r io.Reader, v reflect.Value) error {
 	err := expect(r, structCode)
 	if err != nil {
 		return err
@@ -520,7 +527,7 @@ func (s *serializer) readStruct(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readString(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readString(r io.Reader, v reflect.Value) error {
 	err := expect(r, stringCode)
 	if err != nil {
 		return err
@@ -538,7 +545,7 @@ func (s *serializer) readString(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readFloat32(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readFloat32(r io.Reader, v reflect.Value) error {
 	err := expect(r, float32Code)
 	if err != nil {
 		return err
@@ -553,7 +560,7 @@ func (s *serializer) readFloat32(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readFloat64(r io.Reader, v reflect.Value) error {
+func (s *Serializer) readFloat64(r io.Reader, v reflect.Value) error {
 	err := expect(r, float64Code)
 	if err != nil {
 		return err
@@ -568,7 +575,7 @@ func (s *serializer) readFloat64(r io.Reader, v reflect.Value) error {
 	return nil
 }
 
-func (s *serializer) readInt32(r io.Reader) (int, error) {
+func (s *Serializer) readInt32(r io.Reader) (int, error) {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
@@ -576,7 +583,7 @@ func (s *serializer) readInt32(r io.Reader) (int, error) {
 	}
 	return int(buf[0]) | (int(buf[1]) << 8) | (int(buf[2]) << 16) | (int(buf[3]) << 24), nil
 }
-func (s *serializer) readInt64(r io.Reader) (uint64, error) {
+func (s *Serializer) readInt64(r io.Reader) (uint64, error) {
 	buf := make([]byte, 8)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
