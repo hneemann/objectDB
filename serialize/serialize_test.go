@@ -3,6 +3,7 @@ package serialize
 import (
 	"bytes"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"testing"
 )
 
@@ -217,4 +218,48 @@ func TestRWMap(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, in, out)
+}
+
+func TestRWInt(t *testing.T) {
+	var b bytes.Buffer
+
+	type S struct {
+		A int
+		B int8
+		C int16
+		D int32
+		E int64
+		F uint
+		G uint8
+		H uint16
+		I uint32
+		J uint64
+		K float32
+		L float64
+	}
+
+	w := S{
+		A: 1,
+		B: 2,
+		C: 3,
+		D: -4,
+		E: 5,
+		F: 6,
+		G: 7,
+		H: 8,
+		I: 9,
+		J: 10,
+		K: math.Pi,
+		L: math.Pi,
+	}
+
+	ser := New()
+	err := ser.Write(&b, &w)
+	assert.NoError(t, err)
+
+	var r S
+	err = ser.Read(&b, &r)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, w, r)
 }

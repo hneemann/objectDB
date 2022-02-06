@@ -312,8 +312,10 @@ func (s *Serializer) readValue(r io.Reader, v reflect.Value) {
 		s.readStruct(r, v)
 	case reflect.Bool:
 		s.readBool(r, v)
-	case reflect.Int, reflect.Uint:
-		s.readInt(r, v)
+	case reflect.Int:
+		v.SetInt(int64(s.readInt(r, int32Code, int64Code)))
+	case reflect.Uint:
+		v.SetUint(s.readInt(r, uint32Code, uint64Code))
 	case reflect.Uint8:
 		v.SetUint(s.readSizedInt(r, uint8Code))
 	case reflect.Uint16:
@@ -430,7 +432,7 @@ func (s *Serializer) readSizedInt(r io.Reader, code typeCode) uint64 {
 	return s.readRawInt(r, l)
 }
 
-func (s *Serializer) readInt(r io.Reader, v reflect.Value) {
+func (s *Serializer) readInt(r io.Reader, c32 typeCode, c64 typeCode) uint64 {
 	buf := make([]byte, 1)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
@@ -438,10 +440,10 @@ func (s *Serializer) readInt(r io.Reader, v reflect.Value) {
 	}
 
 	switch typeCode(buf[0]) {
-	case int32Code:
-		v.SetInt(int64(s.readRawInt(r, 4)))
-	case int64Code:
-		v.SetInt(int64(s.readRawInt(r, 8)))
+	case c32:
+		return s.readRawInt(r, 4)
+	case c64:
+		return s.readRawInt(r, 8)
 	default:
 		panic("invalid int data")
 	}
