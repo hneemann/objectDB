@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math"
 	"testing"
+	"time"
 )
 
 type MyStr struct {
@@ -56,5 +57,34 @@ func TestInterface(t *testing.T) {
 	assert.EqualValues(t, "Hello", r[0].String())
 	assert.EqualValues(t, "3.14159", r[1].String())
 	assert.EqualValues(t, "3.14159", r[2].String())
+
+}
+
+type Test struct {
+	T time.Time
+}
+
+func TestSerializer(t *testing.T) {
+	ti := time.Now()
+	s := []Test{
+		{T: ti},
+		{T: ti.Add(time.Hour)},
+		{T: ti.Add(time.Hour * 2)},
+	}
+
+	ser := New()
+
+	b := bytes.Buffer{}
+
+	err := ser.Write(&b, &s)
+	assert.NoError(t, err)
+
+	var r []Test
+	err = ser.Read(&b, &r)
+	assert.NoError(t, err)
+
+	assert.True(t, s[0].T.Equal(r[0].T))
+	assert.True(t, s[1].T.Equal(r[1].T))
+	assert.True(t, s[2].T.Equal(r[2].T))
 
 }

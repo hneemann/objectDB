@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"objectDB/serialize"
 	"os"
 	"path"
 	"strconv"
@@ -72,7 +73,7 @@ func (p persistJson[E]) Persist(dbFile string, items []*E) error {
 	if len(items) == 0 {
 		err := os.Remove(filePath)
 		if err != nil {
-			return fmt.Errorf("could not remove jdon file: %w", err)
+			return fmt.Errorf("could not remove json file: %w", err)
 		}
 	} else {
 		b, err := json.Marshal(items)
@@ -121,6 +122,80 @@ func (p persistJson[E]) Restore() ([]*E, error) {
 				if err != nil {
 					log.Println("could not unmarshal json file")
 					return nil, fmt.Errorf("could not unmarshal json file: %w", err)
+				}
+
+				allItems = append(allItems, items...)
+			}
+		}
+	}
+
+	return allItems, nil
+}
+
+func PersistSerializer[E any](baseFolder, suffix string, serializer *serialize.Serializer) Persist[E] {
+	return persistSerializer[E]{
+		baseFolder: baseFolder,
+		suffix:     suffix,
+		serializer: serializer,
+	}
+}
+
+type persistSerializer[E any] struct {
+	baseFolder string
+	suffix     string
+	serializer *serialize.Serializer
+}
+
+func (p persistSerializer[E]) Persist(dbFile string, items []*E) error {
+	filePath := path.Join(p.baseFolder, dbFile+p.suffix)
+	if len(items) == 0 {
+		err := os.Remove(filePath)
+		if err != nil {
+			return fmt.Errorf("could not remove bin file: %w", err)
+		}
+	} else {
+		f, err := os.Create(filePath)
+		if err != nil {
+			return fmt.Errorf("could not create file: %w", err)
+		}
+		defer f.Close()
+		err = p.serializer.Write(f, items)
+		if err != nil {
+			return fmt.Errorf("could not serialize data: %w", err)
+		}
+	}
+	return nil
+}
+
+func (p persistSerializer[E]) Restore() ([]*E, error) {
+	dir, err := os.Open(p.baseFolder)
+	if err != nil {
+		return []*E{}, fmt.Errorf("could not open base folder: %w", err)
+	}
+	names, err := dir.ReadDir(-1)
+	if err != nil {
+		return []*E{}, fmt.Errorf("could not scan base folder: %w", err)
+	}
+	err = dir.Close()
+	if err != nil {
+		return []*E{}, fmt.Errorf("could not close base folder: %w", err)
+	}
+
+	var allItems []*E
+
+	for _, n := range names {
+		if strings.HasSuffix(n.Name(), p.suffix) {
+			binFile := path.Join(p.baseFolder, n.Name())
+			log.Println("read " + binFile)
+
+			f, err := os.Open(binFile)
+			if err == nil {
+				defer f.Close()
+
+				var items []*E
+				err := p.serializer.Read(f, &items)
+				if err != nil {
+					return nil, fmt.Errorf("could not read bin file: %w", err)
 				}
 
 				allItems = append(allItems, items...)

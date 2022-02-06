@@ -1,6 +1,7 @@
 package objectDB
 
 import (
+	"objectDB/serialize"
 	"testing"
 	"time"
 
@@ -57,6 +58,23 @@ func TestStorage(t *testing.T) {
 	table.Insert(Test{Time: n.Add(time.Hour * 24 * 30)})
 
 	table2, err := New[Test](Monthly[Test](), PersistJSON[Test]("testdata", "_db.json"))
+	a := table2.All()
+	assert.EqualValues(t, 3, a.Len())
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+}
+
+func TestStorageSerializer(t *testing.T) {
+	table, err := New[Test](Monthly[Test](), PersistSerializer[Test]("testdata", "_db.bin", serialize.New()))
+	assert.NoError(t, err)
+	n := time.Now()
+
+	table.Insert(Test{Time: n.Add(-time.Hour * 24 * 30)})
+	table.Insert(Test{Time: n})
+	table.Insert(Test{Time: n.Add(time.Hour * 24 * 30)})
+
+	table2, err := New[Test](Monthly[Test](), PersistSerializer[Test]("testdata", "_db.bin", serialize.New()))
 	a := table2.All()
 	assert.EqualValues(t, 3, a.Len())
 	assert.NoError(t, a.Delete(0))
