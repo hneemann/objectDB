@@ -1,6 +1,7 @@
 package objectDB
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -32,7 +33,11 @@ func (m monthly[E]) SameFile(e1, e2 *E) bool {
 
 func (m monthly[E]) ToFile(e *E) string {
 	d := (*e).GetDate()
-	return strconv.Itoa(d.Year()) + "_" + strconv.Itoa(int(d.Month()))
+	mo := int(d.Month())
+	if mo < 10 {
+		return strconv.Itoa(d.Year()) + "_0" + strconv.Itoa(mo)
+	}
+	return strconv.Itoa(d.Year()) + "_" + strconv.Itoa(mo)
 }
 
 func SingleFile[E Entity[E]](filename string) NameProvider[E] {
@@ -159,7 +164,9 @@ func (p persistSerializer[E]) Persist(dbFile string, items []*E) error {
 			return fmt.Errorf("could not create file: %w", err)
 		}
 		defer f.Close()
-		err = p.serializer.Write(f, items)
+		buf := bufio.NewWriter(f)
+		defer buf.Flush()
+		err = p.serializer.Write(buf, items)
 		if err != nil {
 			return fmt.Errorf("could not serialize data: %w", err)
 		}
@@ -193,7 +200,7 @@ func (p persistSerializer[E]) Restore() ([]*E, error) {
 				defer f.Close()
 
 				var items []*E
-				err := p.serializer.Read(f, &items)
+				err := p.serializer.Read(bufio.NewReader(f), &items)
 				if err != nil {
 					return nil, fmt.Errorf("could not read bin file: %w", err)
 				}
