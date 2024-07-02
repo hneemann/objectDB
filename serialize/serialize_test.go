@@ -220,6 +220,49 @@ func TestRWMap(t *testing.T) {
 	assert.EqualValues(t, in, out)
 }
 
+func TestRWMapMix(t *testing.T) {
+	var b bytes.Buffer
+
+	var in = map[string]int{
+		"a": 1,
+		"b": 2,
+	}
+
+	ser := New()
+	err := ser.Write(&b, &in)
+	assert.NoError(t, err)
+
+	var out map[string]int
+	err = ser.Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
+
+type KeyStr struct {
+	Name string
+	Val  int
+}
+
+func TestRWMapStruct(t *testing.T) {
+	var b bytes.Buffer
+
+	var in = map[KeyStr]int{
+		{"a", 1}: 1,
+		{"b", 2}: 2,
+	}
+
+	ser := New()
+	err := ser.Write(&b, &in)
+	assert.NoError(t, err)
+
+	var out map[KeyStr]int
+	err = ser.Read(&b, &out)
+	assert.NoError(t, err)
+
+	assert.EqualValues(t, in, out)
+}
+
 func TestRWInt(t *testing.T) {
 	var b bytes.Buffer
 

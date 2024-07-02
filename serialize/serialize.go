@@ -117,10 +117,10 @@ func (s *Serializer) writeValue(w io.Writer, v reflect.Value, ptrDepth int) erro
 	case reflect.Map:
 		return s.writeMap(w, v, ptrDepth)
 	case reflect.Interface:
-		return s.writeInterface(w, v, ptrDepth)
+		return s.writeInterface(w, v, ptrDepth+1)
+	default:
+		return fmt.Errorf("unsuported type %v", v)
 	}
-
-	return fmt.Errorf("unsuported type %v", v)
 }
 
 func (s *Serializer) binMarshal(w io.Writer, v reflect.Value, depth int) error {
@@ -225,9 +225,10 @@ func (s *Serializer) writeStruct(w io.Writer, v reflect.Value, ptrDepth int) err
 	if err != nil {
 		return err
 	}
+	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
-		if field.CanSet() {
+		if t.Field(i).IsExported() {
 			err = s.writeValue(w, field, ptrDepth)
 			if err != nil {
 				return err
@@ -481,9 +482,10 @@ func getIntLen(code typeCode) int {
 
 func (s *Serializer) readStruct(r io.Reader, v reflect.Value) {
 	expect(r, structCode)
+	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
-		if field.CanSet() {
+		if t.Field(i).IsExported() {
 			s.readValue(r, field)
 		}
 	}
@@ -537,7 +539,7 @@ func (s *Serializer) readInt64(r io.Reader) uint64 {
 }
 
 func (s *Serializer) binUnmarshal(r io.Reader, v reflect.Value) {
-	b := []byte{}
+	var b []byte
 	ar := reflect.ValueOf(&b).Elem()
 	s.readSlice(r, ar)
 
