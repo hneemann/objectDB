@@ -1,54 +1,75 @@
 package objectDB
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
-type Result[E Entity[E]] struct {
-	table     *Table[E]
-	data      []*E
-	copyAvail []bool
-	deepCopy  []E
+type Result[E any] struct {
+	table      *Table[E]
+	tableIndex []int
+	copyAvail  []bool
+	deepCopy   []E
+	version    int
 }
 
-func newResult[E Entity[E]](data []*E, table *Table[E]) *Result[E] {
-	dc := make([]E, len(data))
-	av := make([]bool, len(data))
+func newResult[E any](tableIndex []int, table *Table[E]) *Result[E] {
+	dc := make([]E, len(tableIndex))
+	av := make([]bool, len(tableIndex))
 	return &Result[E]{
-		table:     table,
-		data:      data,
-		copyAvail: av,
-		deepCopy:  dc,
+		table:      table,
+		tableIndex: tableIndex,
+		copyAvail:  av,
+		deepCopy:   dc,
+		version:    table.version,
 	}
 }
 
-func (a *Result[E]) Len() int {
-	return len(a.data)
+func (r *Result[E]) Len() int {
+	return len(r.tableIndex)
 }
 
-func (a *Result[E]) Item(n int) E {
-	if a.copyAvail[n] {
-		return a.deepCopy[n]
+func (r *Result[E]) Item(n int) (*E, error) {
+	if r.copyAvail[n] {
+		return &r.deepCopy[n], nil
 	}
-	e := (*a.data[n]).DeepCopy()
-	a.deepCopy[n] = e
-	a.copyAvail[n] = true
-	return e
+	if r.table.version != r.version {
+		return nil, fmt.Errorf("item: table has changed")
+	}
+	r.table.deepCopy(&(r.deepCopy[n]), r.table.data[r.tableIndex[n]])
+	r.copyAvail[n] = true
+	return &r.deepCopy[n], nil
 }
 
-func (a *Result[E]) Delete(n int) error {
-	removed, err := a.table.delete(a.data[n])
-	if removed {
-		copy(a.data[n:], a.data[n+1:])
-		a.data[len(a.data)-1] = nil
-		a.data = a.data[:len(a.data)-1]
+func (r *Result[E]) Delete(n int) error {
+	tableIndex := r.tableIndex[n]
+	err := r.table.delete(tableIndex, r.version)
+	if err == nil {
+		r.version++
+		copy(r.tableIndex[n:], r.tableIndex[n+1:])
+		r.tableIndex = r.tableIndex[:len(r.tableIndex)-1]
+		for i := range r.tableIndex {
+			if r.tableIndex[i] > tableIndex {
+				r.tableIndex[i]--
+			}
+		}
 	}
 	return err
 }
 
-func (r *Result[E]) Order(less func(e1, e2 *E) bool) *Result[E] {
-	so := make([]*E, len(r.data))
-	copy(so, r.data)
+func (r *Result[E]) Update(n int, e *E) error {
+	return r.table.update(r.tableIndex[n], r.version, e)
+}
+
+func (r *Result[E]) Order(less func(e1, e2 *E) bool) (*Result[E], error) {
+	if r.table.version != r.version {
+		return nil, fmt.Errorf("order: table has changed")
+	}
+
+	so := make([]int, len(r.tableIndex))
+	copy(so, r.tableIndex)
 	sort.Slice(so, func(i, j int) bool {
-		return less(so[i], so[j])
+		return less(r.table.data[so[i]], r.table.data[so[j]])
 	})
-	return newResult(so, r.table)
+	return newResult(so, r.table), nil
 }

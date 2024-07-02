@@ -2,27 +2,21 @@ package objectDB
 
 import (
 	"fmt"
-	"time"
+	"sync"
 )
 
 type Filter[E any] interface {
 	Accept(e *E) bool
 }
 
-type Entity[E any] interface {
-	DeepCopy() E
-}
-
-type DateEntity[E any] interface {
-	Entity[E]
-	GetDate() time.Time
-}
-
-type Table[E Entity[E]] struct {
+type Table[E any] struct {
+	m            sync.Mutex
 	nameProvider NameProvider[E]
 	persist      Persist[E]
 	orderLess    func(e1, e2 *E) bool
+	deepCopy     func(dst *E, src *E)
 	data         []*E
+	version      int
 }
 
 func (t *Table[E]) SetPrimaryOrder(less func(e1, e2 *E) bool) {
@@ -30,9 +24,14 @@ func (t *Table[E]) SetPrimaryOrder(less func(e1, e2 *E) bool) {
 }
 
 func (t *Table[E]) Insert(e E) error {
-	deepCopy := e.DeepCopy()
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	var deepCopy E
+	t.deepCopy(&deepCopy, &e)
 	if t.orderLess == nil || len(t.data) == 0 || t.orderLess(t.data[len(t.data)-1], &deepCopy) {
 		t.data = append(t.data, &deepCopy)
+		t.version++
 		return t.persistItem(&e)
 	}
 
@@ -41,6 +40,7 @@ func (t *Table[E]) Insert(e E) error {
 			t.data = append(t.data, &deepCopy)
 			copy(t.data[i+1:], t.data[i:])
 			t.data[i] = &deepCopy
+			t.version++
 			return t.persistItem(&deepCopy)
 		}
 	}
@@ -48,29 +48,52 @@ func (t *Table[E]) Insert(e E) error {
 	panic("impossible insert state")
 }
 
-func (t *Table[E]) delete(e *E) (bool, error) {
-	for i, en := range t.data {
-		if e == en {
-			copy(t.data[i:], t.data[i+1:])
-			t.data[len(t.data)-1] = nil
-			t.data = t.data[:len(t.data)-1]
-			return true, t.persistItem(e)
-		}
+func (t *Table[E]) delete(index int, version int) error {
+	t.m.Lock()
+	defer t.m.Unlock()
+	if t.version != version {
+		return fmt.Errorf("delete: table has changed")
 	}
-	return false, fmt.Errorf("could not delete item: not found %v", *e)
+
+	e := t.data[index]
+	copy(t.data[index:], t.data[index+1:])
+	t.data[len(t.data)-1] = nil
+	t.data = t.data[:len(t.data)-1]
+	t.version++
+	return t.persistItem(e)
+}
+
+func (t *Table[E]) update(index int, version int, e *E) error {
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	if t.version != version {
+		return fmt.Errorf("update: table has changed")
+	}
+
+	t.deepCopy(t.data[index], e)
+	return t.persistItem(e)
 }
 
 func (t *Table[E]) All() *Result[E] {
-	c := make([]*E, len(t.data))
-	copy(c, t.data)
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	c := make([]int, len(t.data))
+	for i := range c {
+		c[i] = i
+	}
 	return newResult(c, t)
 }
 
 func (t *Table[E]) Match(accept func(*E) bool) *Result[E] {
-	var m []*E
-	for _, en := range t.data {
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	var m []int
+	for i, en := range t.data {
 		if accept(en) {
-			m = append(m, en)
+			m = append(m, i)
 		}
 	}
 	return newResult(m, t)
@@ -95,7 +118,13 @@ func (t *Table[E]) persistItem(e *E) error {
 	return nil
 }
 
-func New[E Entity[E]](nameProvider NameProvider[E], persist Persist[E]) (*Table[E], error) {
+func New[E any](nameProvider NameProvider[E], persist Persist[E], deepCopy func(dst *E, src *E)) (*Table[E], error) {
+	if deepCopy == nil {
+		deepCopy = func(dst *E, src *E) {
+			*dst = *src
+		}
+	}
+
 	var e []*E
 	if persist != nil {
 		var err error
@@ -107,6 +136,7 @@ func New[E Entity[E]](nameProvider NameProvider[E], persist Persist[E]) (*Table[
 	return &Table[E]{
 		nameProvider: nameProvider,
 		persist:      persist,
+		deepCopy:     deepCopy,
 		data:         e,
 	}, nil
 }

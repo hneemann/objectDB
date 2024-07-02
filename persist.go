@@ -11,28 +11,30 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
-type NameProvider[E Entity[E]] interface {
+type NameProvider[E any] interface {
 	SameFile(e1, e2 *E) bool
 	ToFile(e *E) string
 }
 
-func Monthly[E DateEntity[E]]() NameProvider[E] {
-	return monthly[E]{}
+func Monthly[E any](dateFunc func(*E) time.Time) NameProvider[E] {
+	return monthly[E]{dateFunc: dateFunc}
 }
 
-type monthly[E DateEntity[E]] struct {
+type monthly[E any] struct {
+	dateFunc func(*E) time.Time
 }
 
 func (m monthly[E]) SameFile(e1, e2 *E) bool {
-	d1 := (*e1).GetDate()
-	d2 := (*e2).GetDate()
+	d1 := m.dateFunc(e1)
+	d2 := m.dateFunc(e2)
 	return (d1.Year() == d2.Year()) && (d1.Month() == d2.Month())
 }
 
 func (m monthly[E]) ToFile(e *E) string {
-	d := (*e).GetDate()
+	d := m.dateFunc(e)
 	mo := int(d.Month())
 	if mo < 10 {
 		return strconv.Itoa(d.Year()) + "_0" + strconv.Itoa(mo)
@@ -40,11 +42,11 @@ func (m monthly[E]) ToFile(e *E) string {
 	return strconv.Itoa(d.Year()) + "_" + strconv.Itoa(mo)
 }
 
-func SingleFile[E Entity[E]](filename string) NameProvider[E] {
+func SingleFile[E any](filename string) NameProvider[E] {
 	return singleFile[E]{filename: filename}
 }
 
-type singleFile[E Entity[E]] struct {
+type singleFile[E any] struct {
 	filename string
 }
 
