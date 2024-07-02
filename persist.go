@@ -19,12 +19,16 @@ type NameProvider[E any] interface {
 	ToFile(e *E) string
 }
 
-func Monthly[E any](dateFunc func(*E) time.Time) NameProvider[E] {
-	return monthly[E]{dateFunc: dateFunc}
+func Monthly[E any](prefix string, dateFunc func(*E) time.Time) NameProvider[E] {
+	if prefix != "" {
+		prefix += "_"
+	}
+	return monthly[E]{dateFunc: dateFunc, prefix: prefix}
 }
 
 type monthly[E any] struct {
 	dateFunc func(*E) time.Time
+	prefix   string
 }
 
 func (m monthly[E]) SameFile(e1, e2 *E) bool {
@@ -37,9 +41,9 @@ func (m monthly[E]) ToFile(e *E) string {
 	d := m.dateFunc(e)
 	mo := int(d.Month())
 	if mo < 10 {
-		return strconv.Itoa(d.Year()) + "_0" + strconv.Itoa(mo)
+		return m.prefix + strconv.Itoa(d.Year()) + "_0" + strconv.Itoa(mo)
 	}
-	return strconv.Itoa(d.Year()) + "_" + strconv.Itoa(mo)
+	return m.prefix + strconv.Itoa(d.Year()) + "_" + strconv.Itoa(mo)
 }
 
 func SingleFile[E any](filename string) NameProvider[E] {

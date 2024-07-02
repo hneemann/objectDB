@@ -8,37 +8,41 @@ import (
 type Result[E any] struct {
 	table      *Table[E]
 	tableIndex []int
-	copyAvail  []bool
-	deepCopy   []E
 	version    int
 }
 
-func newResult[E any](tableIndex []int, table *Table[E]) *Result[E] {
-	dc := make([]E, len(tableIndex))
-	av := make([]bool, len(tableIndex))
-	return &Result[E]{
+func newResult[E any](tableIndex []int, table *Table[E]) Result[E] {
+	return Result[E]{
 		table:      table,
 		tableIndex: tableIndex,
-		copyAvail:  av,
-		deepCopy:   dc,
 		version:    table.version,
 	}
 }
 
-func (r *Result[E]) Len() int {
+func (r *Result[E]) Size() int {
 	return len(r.tableIndex)
 }
 
-func (r *Result[E]) Item(n int) (*E, error) {
-	if r.copyAvail[n] {
-		return &r.deepCopy[n], nil
+func (r *Result[E]) Iter(yield func(*E, error) bool) {
+	var err error
+	var e E
+	for _, n := range r.tableIndex {
+		err = r.table.copy(&e, n, r.version)
+		if !yield(&e, err) {
+			break
+		}
+		if err != nil {
+			break
+		}
 	}
-	if r.table.version != r.version {
-		return nil, fmt.Errorf("item: table has changed")
+}
+
+func (r *Result[E]) Get(dst *E, n int) error {
+	if n < 0 || n >= len(r.tableIndex) {
+		return fmt.Errorf("item: index out of range")
 	}
-	r.table.deepCopy(&(r.deepCopy[n]), r.table.data[r.tableIndex[n]])
-	r.copyAvail[n] = true
-	return &r.deepCopy[n], nil
+
+	return r.table.copy(dst, r.tableIndex[n], r.version)
 }
 
 func (r *Result[E]) Delete(n int) error {
@@ -61,9 +65,12 @@ func (r *Result[E]) Update(n int, e *E) error {
 	return r.table.update(r.tableIndex[n], r.version, e)
 }
 
-func (r *Result[E]) Order(less func(e1, e2 *E) bool) (*Result[E], error) {
+func (r *Result[E]) Order(less func(e1, e2 *E) bool) (Result[E], error) {
+	r.table.m.Lock()
+	defer r.table.m.Unlock()
+
 	if r.table.version != r.version {
-		return nil, fmt.Errorf("order: table has changed")
+		return Result[E]{}, fmt.Errorf("order: table has changed")
 	}
 
 	so := make([]int, len(r.tableIndex))
