@@ -3,18 +3,23 @@ package objectDB
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"sync"
+	"time"
 )
 
 type Table[E any] struct {
-	m            sync.Mutex
-	nameProvider NameProvider[E]
-	persist      Persist[E]
-	orderLess    func(e1, e2 *E) bool
-	deepCopy     func(dst *E, src *E)
-	data         []*E
-	version      int
+	m              sync.Mutex
+	nameProvider   NameProvider[E]
+	persist        Persist[E]
+	orderLess      func(e1, e2 *E) bool
+	deepCopy       func(dst *E, src *E)
+	data           []*E
+	version        int
+	writeDelay     int
+	delayMap       map[string]time.Time
+	delayWriteDone chan struct{}
 }
 
 // Size returns the number of elements in the table.
@@ -155,14 +160,20 @@ func (t *Table[E]) persistItem(e *E) error {
 		return nil
 	}
 
-	var p []*E
-	for _, en := range t.data {
-		if t.nameProvider.SameFile(en, e) {
-			p = append(p, en)
+	if t.writeDelay == 0 {
+		var p []*E
+		for _, en := range t.data {
+			if t.nameProvider.SameFile(en, e) {
+				p = append(p, en)
+			}
 		}
+		name := t.nameProvider.ToFile(e)
+		return t.persist.Persist(name, p)
+	} else {
+		name := t.nameProvider.ToFile(e)
+		t.delayMap[name] = time.Now().Add(time.Second * time.Duration(t.writeDelay))
+		return nil
 	}
-	name := t.nameProvider.ToFile(e)
-	return t.persist.Persist(name, p)
 }
 
 func (t *Table[E]) order(tableIndex []int, less func(e1, e2 *E) bool, version int) ([]int, error) {
@@ -179,6 +190,56 @@ func (t *Table[E]) order(tableIndex []int, less func(e1, e2 *E) bool, version in
 		return less(t.data[so[i]], t.data[so[j]])
 	})
 	return so, nil
+}
+
+func (t *Table[E]) SetWriteDelay(sec int) {
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	if t.delayWriteDone != nil {
+		close(t.delayWriteDone)
+		t.delayWriteDone = nil
+	}
+
+	if sec > 0 {
+		done := make(chan struct{})
+		t.delayMap = make(map[string]time.Time)
+		t.delayWriteDone = done
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Second * time.Duration(sec)):
+					t.writeDelayedFiles()
+				case <-done:
+					return
+				}
+			}
+		}()
+	} else {
+		t.delayMap = nil
+	}
+	t.writeDelay = sec
+}
+
+func (t *Table[E]) writeDelayedFiles() {
+	t.m.Lock()
+	defer t.m.Unlock()
+
+	for name, ti := range t.delayMap {
+		if time.Now().After(ti) {
+			list := make([]*E, 0)
+			for _, en := range t.data {
+				if t.nameProvider.ToFile(en) == name {
+					list = append(list, en)
+				}
+			}
+			err := t.persist.Persist(name, list)
+			if err != nil {
+				log.Println(err)
+			}
+			delete(t.delayMap, name)
+		}
+	}
 }
 
 // New creates a new Table.

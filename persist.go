@@ -170,6 +170,7 @@ type persistSerializer[E any] struct {
 }
 
 func (p persistSerializer[E]) Persist(dbFile string, items []*E) error {
+	log.Println("persist: " + dbFile)
 	filePath := path.Join(p.baseFolder, dbFile+p.suffix)
 	if len(items) == 0 {
 		err := os.Remove(filePath)
