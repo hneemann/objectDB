@@ -14,11 +14,17 @@ import (
 	"time"
 )
 
+// NameProvider is an interface to provide a name for a file based on the object.
 type NameProvider[E any] interface {
+	// SameFile returns true if the two objects should be stored in the same file.
 	SameFile(e1, e2 *E) bool
+	// ToFile returns the name of the file where the object should be stored.
+	// If SameFile(e1, e2) is true, ToFile(e1) has to return the same as ToFile(e2).
 	ToFile(e *E) string
 }
 
+// Monthly returns a NameProvider that stores objects in monthly files.
+// The prefix is added to the file name.
 func Monthly[E any](prefix string, dateFunc func(*E) time.Time) NameProvider[E] {
 	if prefix != "" {
 		prefix += "_"
@@ -46,6 +52,7 @@ func (m monthly[E]) ToFile(e *E) string {
 	return m.prefix + strconv.Itoa(d.Year()) + "_" + strconv.Itoa(mo)
 }
 
+// SingleFile returns a NameProvider that stores all objects in the same file.
 func SingleFile[E any](filename string) NameProvider[E] {
 	return singleFile[E]{filename: filename}
 }
@@ -62,11 +69,15 @@ func (s singleFile[E]) ToFile(e *E) string {
 	return s.filename
 }
 
+// Persist is an interface to persist and restore objects.
 type Persist[E any] interface {
+	// Persist stores the objects in a file.
 	Persist(name string, items []*E) error
+	// Restore reads all available objects
 	Restore() ([]*E, error)
 }
 
+// PersistJSON returns a Persist that stores objects in JSON format.
 func PersistJSON[E any](baseFolder, suffix string) Persist[E] {
 	return persistJson[E]{
 		baseFolder: baseFolder,
@@ -143,6 +154,7 @@ func (p persistJson[E]) Restore() ([]*E, error) {
 	return allItems, nil
 }
 
+// PersistSerializer returns a Persist that stores objects in binary format.
 func PersistSerializer[E any](baseFolder, suffix string, serializer *serialize.Serializer) Persist[E] {
 	return persistSerializer[E]{
 		baseFolder: baseFolder,

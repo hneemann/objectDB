@@ -12,23 +12,28 @@ var myMonthly = Monthly[time.Time]("test", func(t *time.Time) time.Time {
 	return *t
 })
 
+func add(ti time.Time, h int) *time.Time {
+	t := ti.Add(time.Hour * time.Duration(h))
+	return &t
+}
+
 func fillTable(table *Table[time.Time]) time.Time {
 	n := time.Now()
-	table.Insert(n.Add(time.Hour * 5))
-	table.Insert(n.Add(time.Hour * 8))
-	table.Insert(n.Add(time.Hour * 7))
-	table.Insert(n.Add(time.Hour * 2))
-	table.Insert(n.Add(time.Hour * 1))
-	table.Insert(n)
-	table.Insert(n.Add(time.Hour * 4))
-	table.Insert(n.Add(time.Hour * 3))
-	table.Insert(n.Add(time.Hour * 9))
-	table.Insert(n.Add(time.Hour * 6))
+	table.Insert(add(n, 5))
+	table.Insert(add(n, 8))
+	table.Insert(add(n, 7))
+	table.Insert(add(n, 2))
+	table.Insert(add(n, 1))
+	table.Insert(add(n, 0))
+	table.Insert(add(n, 4))
+	table.Insert(add(n, 3))
+	table.Insert(add(n, 9))
+	table.Insert(add(n, 6))
 	return n
 }
 
 func TestSimple(t *testing.T) {
-	table, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil)
+	table, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil, nil)
 	assert.NoError(t, err)
 
 	t1 := fillTable(table)
@@ -48,15 +53,15 @@ func TestSimple(t *testing.T) {
 }
 
 func TestStorage(t *testing.T) {
-	table, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil)
+	table, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil, nil)
 	assert.NoError(t, err)
 	n := time.Now()
 
-	table.Insert(n.Add(-time.Hour * 24 * 30))
-	table.Insert(n)
-	table.Insert(n.Add(time.Hour * 24 * 30))
+	table.Insert(add(n, -24*30))
+	table.Insert(add(n, 0))
+	table.Insert(add(n, 24*30))
 
-	table2, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil)
+	table2, err := New[time.Time](myMonthly, PersistJSON[time.Time]("testdata", "_db.json"), nil, nil)
 	a := table2.Match(func(e *time.Time) bool { return true })
 	assert.EqualValues(t, 3, a.Size())
 	assert.NoError(t, a.Delete(0))
@@ -65,15 +70,15 @@ func TestStorage(t *testing.T) {
 }
 
 func TestStorageSerializer(t *testing.T) {
-	table, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil)
+	table, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil, nil)
 	assert.NoError(t, err)
 	n := time.Now()
 
-	table.Insert(n.Add(-time.Hour * 24 * 30))
-	table.Insert(n)
-	table.Insert(n.Add(time.Hour * 24 * 30))
+	table.Insert(add(n, -24*30))
+	table.Insert(add(n, 0))
+	table.Insert(add(n, 24*30))
 
-	table2, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil)
+	table2, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil, nil)
 	a := table2.Match(func(e *time.Time) bool { return true })
 	assert.EqualValues(t, 3, a.Size())
 	assert.NoError(t, a.Delete(0))
@@ -82,9 +87,8 @@ func TestStorageSerializer(t *testing.T) {
 }
 
 func TestInsert(t *testing.T) {
-	table, err := New[time.Time](myMonthly, nil, nil)
+	table, err := New[time.Time](myMonthly, nil, nil, func(a, b *time.Time) bool { return a.Before(*b) })
 	assert.NoError(t, err)
-	table.SetPrimaryOrder(func(a, b *time.Time) bool { return a.Before(*b) })
 
 	n := fillTable(table)
 
@@ -113,9 +117,8 @@ func TestInsert(t *testing.T) {
 }
 
 func TestFirst(t *testing.T) {
-	table, err := New[time.Time](myMonthly, nil, nil)
+	table, err := New[time.Time](myMonthly, nil, nil, func(a, b *time.Time) bool { return a.Before(*b) })
 	assert.NoError(t, err)
-	table.SetPrimaryOrder(func(a, b *time.Time) bool { return a.Before(*b) })
 
 	n := fillTable(table)
 
@@ -125,25 +128,23 @@ func TestFirst(t *testing.T) {
 }
 
 func TestAll(t *testing.T) {
-	table, err := New[time.Time](myMonthly, nil, nil)
+	table, err := New[time.Time](myMonthly, nil, nil, func(a, b *time.Time) bool { return a.Before(*b) })
 	assert.NoError(t, err)
-	table.SetPrimaryOrder(func(a, b *time.Time) bool { return a.Before(*b) })
 
 	n := fillTable(table)
 
 	assert.EqualValues(t, 10, table.Size())
 	var i int
 	for e := range table.All {
-		assert.EqualValues(t, n.Add(time.Hour*time.Duration(i)), e)
+		assert.EqualValues(t, n.Add(time.Hour*time.Duration(i)), *e)
 		i++
 	}
 
 }
 
 func TestUpdate(t *testing.T) {
-	table, err := New[time.Time](myMonthly, nil, nil)
+	table, err := New[time.Time](myMonthly, nil, nil, func(a, b *time.Time) bool { return a.Before(*b) })
 	assert.NoError(t, err)
-	table.SetPrimaryOrder(func(a, b *time.Time) bool { return a.Before(*b) })
 
 	n := fillTable(table)
 

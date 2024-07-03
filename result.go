@@ -2,7 +2,6 @@ package objectDB
 
 import (
 	"fmt"
-	"sort"
 )
 
 type Result[E any] struct {
@@ -66,17 +65,13 @@ func (r *Result[E]) Update(n int, e *E) error {
 }
 
 func (r *Result[E]) Order(less func(e1, e2 *E) bool) (Result[E], error) {
-	r.table.m.Lock()
-	defer r.table.m.Unlock()
-
-	if r.table.version != r.version {
-		return Result[E]{}, fmt.Errorf("order: table has changed")
+	so, err := r.table.order(r.tableIndex, less, r.version)
+	if err != nil {
+		return Result[E]{}, err
 	}
-
-	so := make([]int, len(r.tableIndex))
-	copy(so, r.tableIndex)
-	sort.Slice(so, func(i, j int) bool {
-		return less(r.table.data[so[i]], r.table.data[so[j]])
-	})
-	return newResult(so, r.table), nil
+	return Result[E]{
+		table:      r.table,
+		tableIndex: so,
+		version:    r.version,
+	}, nil
 }
