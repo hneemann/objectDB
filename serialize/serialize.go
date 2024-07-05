@@ -380,7 +380,7 @@ func (s *Serializer) readInterface(r io.Reader, v reflect.Value) {
 
 func (s *Serializer) readMap(r io.Reader, v reflect.Value) {
 	expect(r, mapCode)
-	l := s.readInt32(r)
+	l := int(s.readInt32(r))
 
 	keyType := v.Type().Key()
 	valType := v.Type().Elem()
@@ -399,7 +399,7 @@ func (s *Serializer) readMap(r io.Reader, v reflect.Value) {
 
 func (s *Serializer) readSlice(r io.Reader, v reflect.Value) {
 	expect(r, arrayCode)
-	l := s.readInt32(r)
+	l := int(s.readInt32(r))
 
 	slice := reflect.MakeSlice(v.Type(), l, l)
 	for i := 0; i < l; i++ {
@@ -410,7 +410,7 @@ func (s *Serializer) readSlice(r io.Reader, v reflect.Value) {
 
 func (s *Serializer) readArray(r io.Reader, v reflect.Value) {
 	expect(r, arrayCode)
-	l := s.readInt32(r)
+	l := int(s.readInt32(r))
 
 	for i := 0; i < l; i++ {
 		s.readValue(r, v.Index(i))
@@ -514,14 +514,15 @@ func (s *Serializer) readFloat64(r io.Reader, v reflect.Value) {
 	v.SetFloat(math.Float64frombits(floatBits))
 }
 
-func (s *Serializer) readInt32(r io.Reader) int {
+func (s *Serializer) readInt32(r io.Reader) uint32 {
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(r, buf)
 	if err != nil {
 		panic(fmt.Errorf("could not read int32: %w", err))
 	}
-	return int(buf[0]) | (int(buf[1]) << 8) | (int(buf[2]) << 16) | (int(buf[3]) << 24)
+	return uint32(buf[0]) | (uint32(buf[1]) << 8) | (uint32(buf[2]) << 16) | (uint32(buf[3]) << 24)
 }
+
 func (s *Serializer) readInt64(r io.Reader) uint64 {
 	buf := make([]byte, 8)
 	_, err := io.ReadFull(r, buf)

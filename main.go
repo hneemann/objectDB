@@ -35,7 +35,7 @@ func (t *Table[E]) Insert(e *E) error {
 
 	var deepCopy E
 	t.deepCopy(&deepCopy, e)
-	if len(t.data) == 0 || (t.orderLess != nil && t.orderLess(t.data[len(t.data)-1], &deepCopy)) {
+	if t.orderLess == nil || len(t.data) == 0 || (t.orderLess != nil && t.orderLess(t.data[len(t.data)-1], &deepCopy)) {
 		t.data = append(t.data, &deepCopy)
 		t.version++
 		return t.persistItem(&deepCopy)
