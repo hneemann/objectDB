@@ -10,16 +10,14 @@ import (
 )
 
 type Table[E any] struct {
-	m              sync.Mutex
-	nameProvider   NameProvider[E]
-	persist        Persist[E]
-	orderLess      func(e1, e2 *E) bool
-	deepCopy       func(dst *E, src *E)
-	data           []*E
-	version        int
-	writeDelay     int
-	delayMap       map[string]time.Time
-	delayWriteDone chan struct{}
+	m            sync.Mutex
+	nameProvider NameProvider[E]
+	persist      Persist[E]
+	orderLess    func(e1, e2 *E) bool
+	deepCopy     func(dst *E, src *E)
+	data         []*E
+	version      int
+	delayedWrite *delayHandler[E]
 }
 
 // Size returns the number of elements in the table.
@@ -37,7 +35,7 @@ func (t *Table[E]) Insert(e *E) error {
 
 	var deepCopy E
 	t.deepCopy(&deepCopy, e)
-	if t.orderLess == nil || len(t.data) == 0 || t.orderLess(t.data[len(t.data)-1], &deepCopy) {
+	if len(t.data) == 0 || (t.orderLess != nil && t.orderLess(t.data[len(t.data)-1], &deepCopy)) {
 		t.data = append(t.data, &deepCopy)
 		t.version++
 		return t.persistItem(&deepCopy)
@@ -160,7 +158,7 @@ func (t *Table[E]) persistItem(e *E) error {
 		return nil
 	}
 
-	if t.writeDelay == 0 {
+	if t.delayedWrite == nil {
 		var p []*E
 		for _, en := range t.data {
 			if t.nameProvider.SameFile(en, e) {
@@ -170,9 +168,7 @@ func (t *Table[E]) persistItem(e *E) error {
 		name := t.nameProvider.ToFile(e)
 		return t.persist.Persist(name, p)
 	} else {
-		name := t.nameProvider.ToFile(e)
-		t.delayMap[name] = time.Now().Add(time.Second * time.Duration(t.writeDelay))
-		return nil
+		return t.delayedWrite.modified(t.nameProvider.ToFile(e))
 	}
 }
 
@@ -192,52 +188,135 @@ func (t *Table[E]) order(tableIndex []int, less func(e1, e2 *E) bool, version in
 	return so, nil
 }
 
+// SetWriteDelay sets the delay in seconds for persisting changes to disk.
+// If sec is 0, changes are written immediately. This is the default.
+// If sec is greater than 0, changes are written after sec seconds of inactivity.
+// if used the Shutdown method must be called before the program exits, otherwise changes are lost.
 func (t *Table[E]) SetWriteDelay(sec int) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
-	if t.delayWriteDone != nil {
-		close(t.delayWriteDone)
-		t.delayWriteDone = nil
+	if t.delayedWrite != nil {
+		t.delayedWrite.Shutdown()
+		t.delayedWrite = nil
 	}
 
 	if sec > 0 {
-		done := make(chan struct{})
-		t.delayMap = make(map[string]time.Time)
-		t.delayWriteDone = done
-		go func() {
-			for {
-				select {
-				case <-time.After(time.Second * time.Duration(sec)):
-					t.writeDelayedFiles()
-				case <-done:
-					return
-				}
-			}
-		}()
-	} else {
-		t.delayMap = nil
+		t.delayedWrite = newDelayHandler[E](t, sec)
 	}
-	t.writeDelay = sec
 }
 
-func (t *Table[E]) writeDelayedFiles() {
+func (t *Table[E]) writeFiles(name string) error {
 	t.m.Lock()
 	defer t.m.Unlock()
 
-	for name, ti := range t.delayMap {
-		if time.Now().After(ti) {
-			list := make([]*E, 0)
-			for _, en := range t.data {
-				if t.nameProvider.ToFile(en) == name {
-					list = append(list, en)
+	list := make([]*E, 0)
+	for _, en := range t.data {
+		if t.nameProvider.ToFile(en) == name {
+			list = append(list, en)
+		}
+	}
+	return t.persist.Persist(name, list)
+}
+
+func (t *Table[E]) Shutdown() {
+	log.Println("shutdown table")
+	t.m.Lock()
+	dw := t.delayedWrite
+	t.delayedWrite = nil
+	t.m.Unlock()
+
+	if dw != nil {
+		dw.Shutdown()
+	}
+	log.Println("table shutdown completed")
+}
+
+type delayHandler[E any] struct {
+	m         sync.Mutex
+	table     *Table[E]
+	sec       int
+	nameMap   map[string]time.Time
+	lastError error
+	done      chan struct{}
+	ack       chan struct{}
+}
+
+func newDelayHandler[E any](table *Table[E], sec int) *delayHandler[E] {
+	done := make(chan struct{})
+	ack := make(chan struct{})
+	dh := &delayHandler[E]{
+		table:   table,
+		sec:     sec,
+		nameMap: make(map[string]time.Time),
+		done:    done,
+		ack:     ack,
+	}
+	go func() {
+		for {
+			select {
+			case <-time.After(time.Second * time.Duration(sec)):
+				names := dh.getModifiedNameList()
+				for _, name := range names {
+					err := dh.table.writeFiles(name)
+					dh.written(name, err)
 				}
+			case <-done:
+				close(ack)
+				return
 			}
-			err := t.persist.Persist(name, list)
-			if err != nil {
-				log.Println(err)
-			}
-			delete(t.delayMap, name)
+		}
+	}()
+
+	return dh
+}
+
+func (h *delayHandler[E]) modified(file string) error {
+	h.m.Lock()
+	defer h.m.Unlock()
+
+	h.nameMap[file] = time.Now().Add(time.Second * time.Duration(h.sec))
+	if h.lastError != nil {
+		err := h.lastError
+		h.lastError = nil
+		return err
+	}
+	return nil
+}
+
+func (h *delayHandler[E]) getModifiedNameList() []string {
+	h.m.Lock()
+	defer h.m.Unlock()
+
+	now := time.Now()
+	var names []string
+	for name, t := range h.nameMap {
+		if now.After(t) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (h *delayHandler[E]) written(name string, err error) {
+	h.m.Lock()
+	defer h.m.Unlock()
+
+	if err != nil {
+		h.lastError = err
+	} else {
+		delete(h.nameMap, name)
+	}
+}
+
+func (h *delayHandler[E]) Shutdown() {
+	close(h.done)
+	<-h.ack
+
+	for name, _ := range h.nameMap {
+		err := h.table.writeFiles(name)
+		if err != nil {
+			log.Println(err)
 		}
 	}
 }
