@@ -2,6 +2,7 @@ package objectDB
 
 import (
 	"objectDB/serialize"
+	"os"
 	"testing"
 	"time"
 
@@ -163,4 +164,80 @@ func TestUpdate(t *testing.T) {
 	n = n.Add(time.Hour * 5)
 	assert.Error(t, r.Update(0, &n))
 
+}
+
+func TestStorageSerializerDelay(t *testing.T) {
+	table, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil, nil)
+	assert.NoError(t, err)
+	table.SetWriteDelay(2)
+
+	// add some vales
+	n := time.Now()
+	table.Insert(add(n, 0))
+	table.Insert(add(n, 1))
+	table.Insert(add(n, 2))
+
+	// folder still empty
+	files, err := os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, len(files))
+
+	// wait
+	time.Sleep(5 * time.Second)
+
+	// folder contains a file
+	files, err = os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, len(files))
+
+	// delete entries
+	a := table.Match(func(e *time.Time) bool { return true })
+	assert.EqualValues(t, 3, a.Size())
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+
+	// folder contains still a file
+	files, err = os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, len(files))
+
+	// wait again
+	time.Sleep(5 * time.Second)
+
+	// folder empty
+	files, err = os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, len(files))
+}
+
+func TestStorageSerializerDelayShutdown(t *testing.T) {
+	table, err := New[time.Time](myMonthly, PersistSerializer[time.Time]("testdata", "_db.bin", serialize.New()), nil, nil)
+	assert.NoError(t, err)
+	table.SetWriteDelay(2)
+
+	// add some vales
+	n := time.Now()
+	table.Insert(add(n, 0))
+	table.Insert(add(n, 1))
+	table.Insert(add(n, 2))
+
+	table.Shutdown()
+
+	// folder contains a file
+	files, err := os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, len(files))
+
+	// delete entries
+	a := table.Match(func(e *time.Time) bool { return true })
+	assert.EqualValues(t, 3, a.Size())
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+	assert.NoError(t, a.Delete(0))
+
+	// folder empty
+	files, err = os.ReadDir("testdata")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 0, len(files))
 }
