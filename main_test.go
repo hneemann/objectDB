@@ -1,7 +1,7 @@
 package objectDB
 
 import (
-	"objectDB/serialize"
+	"github.com/hneemann/objectDB/serialize"
 	"os"
 	"testing"
 	"time"

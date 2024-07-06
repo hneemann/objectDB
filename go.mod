@@ -1,4 +1,4 @@
-module objectDB
+module github.com/hneemann/objectDB
 
 go 1.23rc1
 
