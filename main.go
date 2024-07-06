@@ -90,7 +90,9 @@ func (t *Table[E]) update(index int, version int, e *E) error {
 	return t.persistItem(e)
 }
 
-// All calls the yield function for each element in the table.
+// All calls the yield function for each element in the table. No long-running
+// operations should be done in the yield function, because the table is locked
+// during the call.
 func (t *Table[E]) All(yield func(*E) bool) {
 	t.m.Lock()
 	defer t.m.Unlock()
@@ -104,9 +106,11 @@ func (t *Table[E]) All(yield func(*E) bool) {
 	}
 }
 
-// Match returns a Result that contains all elements that match the accept function.
-// For performance reasons, the accept function is called with the not yet deep copied elements.
-// So the accept function is not allowed to modify the elements.
+// Match returns a Result that contains all elements that match the accept
+// function. For performance reasons, the accept function is called with the not
+// yet deep copied elements. So the accept function is not allowed to modify the
+// elements. No long-running operations should be done in the accept function,
+// because the table is locked during the call.
 func (t *Table[E]) Match(accept func(*E) bool) Result[E] {
 	t.m.Lock()
 	defer t.m.Unlock()
@@ -120,9 +124,11 @@ func (t *Table[E]) Match(accept func(*E) bool) Result[E] {
 	return newResult(m, t)
 }
 
-// First returns the first element that matches the accept function.
-// For performance reasons, the accept function is called with the not yet deep copied elements.
-// So the accept function is not allowed to modify the elements.
+// First returns the first element that matches the accept function. For
+// performance reasons, the accept function is called with the not yet deep
+// copied elements. So the accept function is not allowed to modify the elements.
+// No long-running operations should be done in the accept function, because the
+// table is locked during the call.
 func (t *Table[E]) First(dst *E, accept func(*E) bool) bool {
 	t.m.Lock()
 	defer t.m.Unlock()
@@ -188,16 +194,17 @@ func (t *Table[E]) order(tableIndex []int, less func(e1, e2 *E) bool, version in
 	return so, nil
 }
 
-// SetWriteDelay sets the delay in seconds for persisting changes to disk.
-// If sec is 0, changes are written immediately. This is the default.
-// If sec is greater than 0, changes are written after sec seconds of inactivity.
-// if used the Shutdown method must be called before the program exits, otherwise changes are lost.
+// SetWriteDelay sets the delay in seconds for persisting changes to disk. If sec
+// is 0, changes are written immediately. This is the default. If sec is greater
+// than 0, changes are written after sec seconds of inactivity. If this method is
+// called, the Shutdown method must be called before the program exits, otherwise
+// changes may be lost.
 func (t *Table[E]) SetWriteDelay(sec int) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
 	if t.delayedWrite != nil {
-		t.delayedWrite.Shutdown()
+		t.delayedWrite.shutdown()
 		t.delayedWrite = nil
 	}
 
@@ -219,6 +226,10 @@ func (t *Table[E]) writeFiles(name string) error {
 	return t.persist.Persist(name, list)
 }
 
+// Shutdown must be called before the program exits, if write delay was used,
+// otherwise changes may be lost. It waits until all changes are written to disk.
+// If the write delay was not used, this method does nothing. After this method
+// is called, the table is still usable, but changes are written immediately.
 func (t *Table[E]) Shutdown() {
 	log.Println("shutdown table")
 	t.m.Lock()
@@ -227,7 +238,7 @@ func (t *Table[E]) Shutdown() {
 	t.m.Unlock()
 
 	if dw != nil {
-		dw.Shutdown()
+		dw.shutdown()
 	}
 	log.Println("table shutdown completed")
 }
@@ -309,11 +320,11 @@ func (h *delayHandler[E]) written(name string, err error) {
 	}
 }
 
-func (h *delayHandler[E]) Shutdown() {
+func (h *delayHandler[E]) shutdown() {
 	close(h.done)
 	<-h.ack
 
-	for name, _ := range h.nameMap {
+	for name := range h.nameMap {
 		err := h.table.writeFiles(name)
 		if err != nil {
 			log.Println(err)
@@ -321,7 +332,11 @@ func (h *delayHandler[E]) Shutdown() {
 	}
 }
 
-// New creates a new Table.
+// New creates a new Table. The nameProvider is used to create a file name for
+// each element. The persist parameter is used to store the data on disk. The
+// deepCopy function is used to create a deep copy of an element. If nil, a
+// simple copy is used. The less function is used to sort the elements. If nil,
+// no sorting is done.
 func New[E any](nameProvider NameProvider[E], persist Persist[E], deepCopy func(dst *E, src *E), less func(e1, e2 *E) bool) (*Table[E], error) {
 	if deepCopy == nil {
 		deepCopy = func(dst *E, src *E) {

@@ -41,7 +41,9 @@ type Serializer struct {
 	typeMap  map[string]uint32
 }
 
-// New creates a new serializer
+// New creates a new serializer. The serializer is able to serialize and
+// deserialize interfaces. To do that the interface has to be registered with
+// Register.
 func New() *Serializer {
 	return &Serializer{typeMap: map[string]uint32{}}
 }

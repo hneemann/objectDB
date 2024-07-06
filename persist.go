@@ -154,7 +154,9 @@ func (p persistJson[E]) Restore() ([]*E, error) {
 	return allItems, nil
 }
 
-// PersistSerializer returns a Persist that stores objects in binary format.
+// PersistSerializer returns a Persist that stores objects in binary format. It
+// is able to persist and restore interfaces. To do that the interface has to be
+// registered with serialize.Register.
 func PersistSerializer[E any](baseFolder, suffix string, serializer *serialize.Serializer) Persist[E] {
 	return persistSerializer[E]{
 		baseFolder: baseFolder,
