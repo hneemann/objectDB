@@ -91,6 +91,7 @@ type persistJson[E any] struct {
 }
 
 func (p persistJson[E]) Persist(dbFile string, items []*E) error {
+	log.Println("persist", dbFile)
 	filePath := path.Join(p.baseFolder, dbFile+p.suffix)
 	if len(items) == 0 {
 		err := os.Remove(filePath)
@@ -127,9 +128,10 @@ func (p persistJson[E]) Restore() ([]*E, error) {
 	var allItems []*E
 
 	for _, n := range names {
-		if strings.HasSuffix(n.Name(), p.suffix) {
-			jsonFile := path.Join(p.baseFolder, n.Name())
-			log.Println("read " + jsonFile)
+		name := n.Name()
+		if strings.HasSuffix(name, p.suffix) {
+			jsonFile := path.Join(p.baseFolder, name)
+			log.Println("read", name)
 
 			f, err := os.Open(jsonFile)
 			if err == nil {
@@ -172,7 +174,7 @@ type persistSerializer[E any] struct {
 }
 
 func (p persistSerializer[E]) Persist(dbFile string, items []*E) error {
-	log.Println("persist: " + dbFile)
+	log.Println("persist", dbFile)
 	filePath := path.Join(p.baseFolder, dbFile+p.suffix)
 	if len(items) == 0 {
 		err := os.Remove(filePath)
@@ -212,9 +214,10 @@ func (p persistSerializer[E]) Restore() ([]*E, error) {
 	var allItems []*E
 
 	for _, n := range names {
-		if strings.HasSuffix(n.Name(), p.suffix) {
-			binFile := path.Join(p.baseFolder, n.Name())
-			log.Println("read " + binFile)
+		name := n.Name()
+		if strings.HasSuffix(name, p.suffix) {
+			binFile := path.Join(p.baseFolder, name)
+			log.Println("read", name)
 
 			f, err := os.Open(binFile)
 			if err == nil {
