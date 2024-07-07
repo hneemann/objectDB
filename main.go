@@ -91,8 +91,8 @@ func (t *Table[E]) update(index int, version int, e *E) error {
 }
 
 // All calls the yield function for each element in the table. No long-running
-// operations should be done in the yield function, because the table is locked
-// during the call.
+// operations should be done in the yield function, as the table is locked during
+// the call. The elements are deep copied before the yield function is called.
 func (t *Table[E]) All(yield func(*E) bool) {
 	t.m.Lock()
 	defer t.m.Unlock()
