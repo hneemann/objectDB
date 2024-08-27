@@ -1,6 +1,6 @@
 module github.com/hneemann/objectDB
 
-go 1.23rc1
+go 1.23
 
 require github.com/stretchr/testify v1.7.0
 
